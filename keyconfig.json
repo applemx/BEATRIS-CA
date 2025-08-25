@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "keyboard": {
+    "useScanCode": true,
+    "bindings": {
+      "MoveLeft":  "SC_LEFT",
+      "MoveRight": "SC_RIGHT",
+      "SoftDrop":  "VK_C",
+      "HardDrop":  "VK_SPACE",
+      "RotateCW":  "SC_UP",
+      "RotateCCW":"SC_DOWN",
+      "Hold":     "VK_C"
+    }
+  }
+}

@@ -1,0 +1,58 @@
+int main(void) {
+
+	// ぷよテトのプロセスハンドルを取得
+	if(!FindProcessHandle()) {
+		// ぷよテトが起動していない
+		return 0;
+	}
+
+	while(true) {
+		// メモリ読み込み
+		int matchState = MemorizeMatchAddress();
+
+		// メニュー画面
+		if (matchState == 0) {
+			// キャラクタ自動選択プログラムを書いたり、
+			... = GetCharacterSelection(...);
+			// CPUを休ませたり
+			std::this_thread::sleep_for(std::chrono::milliseconds(30));
+		}
+
+		// 試合中
+		else {
+			// 何Pのメモリを読み込みたいか
+			// 1P:0, 2P:1, 3P:2, 4P:3
+			int playerIndex = 0;
+
+			if (IsOnline()) {
+				// オンラインの場合、自分が何Pであるかを以下の関数で取得
+				playerIndex = FindPlayer();
+			}
+
+			// 試合中の経過フレームを取得
+			int curFrame = GetMatchFrameCount();
+			static int preFrame = 0;
+
+			// 1フレーム以上経過していたら
+			if (curFrame > preFrame) {
+				// AIが動くようにプログラムを書く
+				if (IsOpening()) {
+					// ready go の ready の待ち時間のときネクスト読み込むなど
+					GetNext(playerIndex, ...);
+				}
+			}
+
+			preFrame = curFrame;
+
+			// CPUを休ませる
+			// 1フレーム(16.6666ms)も逃したくないときは1～3msがおすすめ
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+
+	}
+
+	// もうメモリを読み込まないのでぷよテトのプロセスハンドルを閉じる
+	CloseProcessHandle();
+
+	return 0;
+}

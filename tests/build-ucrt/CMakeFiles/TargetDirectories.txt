@@ -1,0 +1,3 @@
+C:/Users/0db4j/TetrisAI/BEATRIS-Cb/tests/build-ucrt/CMakeFiles/test_board.dir
+C:/Users/0db4j/TetrisAI/BEATRIS-Cb/tests/build-ucrt/CMakeFiles/edit_cache.dir
+C:/Users/0db4j/TetrisAI/BEATRIS-Cb/tests/build-ucrt/CMakeFiles/rebuild_cache.dir
