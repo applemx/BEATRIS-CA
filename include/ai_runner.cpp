@@ -17,13 +17,13 @@
 using Board = reachability::board_t<10,24>;
 static int g_frame = 0;
 
-static char typeToChar(PPTDef::Type t)
+static wchar_t typeToWChar(PPTDef::Type t)
 {
     using enum PPTDef::Type;
     switch (t) {
-    case I: return 'I'; case O: return 'O'; case T: return 'T';
-    case S: return 'S'; case Z: return 'Z'; case J: return 'J';
-    case L: return 'L'; default: return 0;
+    case I: return L'I'; case O: return L'O'; case T: return L'T';
+    case S: return L'S'; case Z: return L'Z'; case J: return L'J';
+    case L: return L'L'; default: return 0;
     }
 }
 
@@ -34,11 +34,11 @@ void RunBot(int playerIndex)
     std::fwprintf(stderr, L"[DBG] playerMainAddress[%d] = 0x%llX\n",playerIndex, PPT1Mem::Debug_GetPlayerMainAddress(playerIndex));
 
     // ランタイム状態
-    static uint64_t     lastPiecePtr    = 0; // 前回の Current 構造体ポインタ
-    static uint64_t     lastExecutedPtr = 0; // 入力を送ったピースのポインタ
-    static PPTDef::Type   lastType      = PPTDef::Type::Nothing;
-    static PPTDef::Locked lastLocked    = PPTDef::Locked::No;
-    static char           hold_slot     = 0; // 実ホールド内容（0=空）
+    static uint64_t       lastPiecePtr    = 0; // 前回の Current 構造体ポインタ
+    static uint64_t       lastExecutedPtr = 0; // 入力を送ったピースのポインタ
+    static PPTDef::Type   lastType        = PPTDef::Type::Nothing;
+    static PPTDef::Locked lastLocked      = PPTDef::Locked::No;
+    static char           hold_slot       = 0; // 実ホールド内容（0=空）
 
     int  prevFrame     = -1;
     bool warnedNoPiece = false;
@@ -47,12 +47,13 @@ void RunBot(int playerIndex)
     {
         if (PPT1Mem::MemorizeMatchAddress() == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(30));
-            prevFrame     = -1;
-            warnedNoPiece = false;
-            lastPiecePtr  = 0;
+            prevFrame       = -1;
+            warnedNoPiece   = false;
+            lastPiecePtr    = 0;
             lastExecutedPtr = 0;
-            lastType      = PPTDef::Type::Nothing;
-            lastLocked    = PPTDef::Locked::No;
+            lastType        = PPTDef::Type::Nothing;
+            lastLocked      = PPTDef::Locked::No;
+            hold_slot       = 0;
             continue;
         }
 
@@ -108,9 +109,15 @@ void RunBot(int playerIndex)
 
         // --- 実キュー（current + next）---
         std::vector<char> queue;
-        if (char c0 = typeToChar(cur.type); c0) queue.push_back(c0);
+        auto toChar = [](PPTDef::Type t)->char{
+            using enum PPTDef::Type;
+            switch(t){ case I:return 'I';case O:return 'O';case T:return 'T';
+                       case S:return 'S';case Z:return 'Z';case J:return 'J';
+                       case L:return 'L'; default:return 0; }
+        };
+        if (char c0 = toChar(cur.type); c0) queue.push_back(c0);
         for (int i = 0; i < PPTDef::NEXT_NUM; ++i)
-            if (char c = typeToChar(next[i]); c) queue.push_back(c);
+            if (char c = toChar(next[i]); c) queue.push_back(c);
 
         // --- 仮想キュー（ホールド反映）---
         std::vector<char> vq = queue;
@@ -141,12 +148,12 @@ void RunBot(int playerIndex)
         // デバッグ
         std::fwprintf(stderr, L"-----------------------------\n");
         std::fwprintf(stderr, L"[PLAN] F%04d piece=%lc usedHold=%lc dst=(%d,%d,r%d) tokens=%zu\n",
-                      frame, typeToChar(cur.type),
+                      frame, typeToWChar(cur.type),
                       mv.usedHold ? L'Y' : L'N',
                       int(mv.x), int(mv.y), int(mv.rot),
                       tokens.size());
         for (const auto& t : tokens)
-            std::fwprintf(stderr, L"[DBG] F%04d token=%s\n", frame, t.c_str());
+            std::fwprintf(stderr, L"[DBG] F%04d token=%hs\n", frame, t.c_str());
         std::fwprintf(stderr, L"-----------------------------\n");
 
         // VK マッピング
@@ -158,35 +165,53 @@ void RunBot(int playerIndex)
             if (t=="soft")  { vk = 0x43;     return true; } // 'C' Fast/Soft Drop
             if (t=="cw")    { vk = VK_UP;    return true; } // Rotate Right = ↑
             if (t=="ccw")   { vk = VK_DOWN;  return true; } // Rotate Left  = ↓
+            if (t=="hold")  { vk = 0x56;     return true; } // 'V' Hold
+            if (t=="hard")  { vk = VK_SPACE; return true; } // Hard Drop
             return false;
         };
 
         bool didHard = false;
+        bool desynced = false; // ★ 途中でピースが変わったら中断
 
         for (size_t i = 0; i < tokens.size(); ++i) {
             const std::string& t = tokens[i];
 
-            if (t == "hold") { hold();  continue; }
-            if (t == "hard") {
-                hardDrop();
-                didHard = true;
-                break; // ピース確定
-            }
-
             WORD vk1=0, vk2=0;
+            bool isHard = (t=="hard");
+            bool isHold = (t=="hold");
+
+            if (isHold) { hold(); continue; }
+            if (isHard) { hardDrop(); didHard = true; break; }
+
             if (!mapVK(t, vk1)) continue;
 
             // 移動＋回転は 1F 同時押し
             bool combined = false;
-            if (i+1 < tokens.size() && ((isMove(t) && isRot(tokens[i+1])) || (isRot(t) && isMove(tokens[i+1])))) {
+            if (i+1 < tokens.size() &&
+                ((isMove(t) && isRot(tokens[i+1])) || (isRot(t) && isMove(tokens[i+1])))) {
                 if (mapVK(tokens[i+1], vk2)) combined = true;
             }
 
-            if (combined) { inputkey(playerIndex, {vk1, vk2}); ++i; }
-            else          { inputkey(playerIndex, {vk1}); }
+            InputResult r{};
+            if (combined) { r = inputkey(playerIndex, {vk1, vk2}); ++i; }
+            else          { r = inputkey(playerIndex, {vk1}); }
 
-            std::fprintf(stderr, "[DBG] F%04d: inputkey token=%s vk1=0x%04X vk2=0x%04X\n",
-                         frame, t.c_str(), vk1, vk2);
+            std::fprintf(stderr, "[DBG] F%04d: inputkey token=%s vk1=0x%04X vk2=0x%04X  ok=%d changed=%d lockedchg=%d\n",
+                         frame, t.c_str(), vk1, vk2, int(r.ok), int(r.pieceChanged), int(r.lockedChanged));
+
+            // ★ ピースが切り替わってしまったら中断（ただし hold/hard の後は例外的に許容）
+            if (r.pieceChanged) {
+                desynced = true;
+                break;
+            }
+        }
+
+        // desync したら残りは送らず、次フレームで再計画（ズレ防止）
+        if (desynced && !didHard) {
+            std::fwprintf(stderr, L"[DESYNC] F%04d: ピース切替を検知。残り入力を破棄して再計画します。\n", frame);
+            lastPiecePtr = 0; lastExecutedPtr = 0;
+            lastType = PPTDef::Type::Nothing; lastLocked = PPTDef::Locked::No;
+            continue;
         }
 
         // ホールド内容のローカル更新
